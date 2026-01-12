@@ -1,0 +1,246 @@
+/**
+ * ===================================
+ * SERVICE: REPORT - BÁO CÁO & THỐNG KÊ
+ * ===================================
+ * Service này xử lý logic nghiệp vụ liên quan đến báo cáo:
+ * - Thống kê sức khỏe theo thời gian
+ * - Thống kê lịch sử tư vấn
+ * - Báo cáo tổng quan
+ */
+
+const HealthRecord = require('../models/HealthRecord');
+const ChatHistory = require('../models/ChatHistory');
+
+/**
+ * Lấy báo cáo sức khỏe theo thời gian
+ * Dữ liệu dùng để vẽ biểu đồ
+ * @param {string} userId - ID của user
+ * @param {object} query - Query parameters (startDate, endDate, type)
+ * @returns {object} - Dữ liệu báo cáo
+ */
+const getHealthReport = async (userId, query) => {
+    // Xác định khoảng thời gian
+    const endDate = query.endDate ? new Date(query.endDate) : new Date();
+    const startDate = query.startDate
+        ? new Date(query.startDate)
+        : new Date(endDate - 30 * 24 * 60 * 60 * 1000); // Mặc định 30 ngày
+
+    // Lấy tất cả bản ghi trong khoảng thời gian
+    const records = await HealthRecord.find({
+        userId,
+        createdAt: {
+            $gte: startDate,
+            $lte: endDate
+        }
+    }).sort({ createdAt: 1 });
+
+    // Tạo dữ liệu cho biểu đồ
+    const chartData = {
+        // Dữ liệu cân nặng theo ngày
+        weight: records.map(r => ({
+            date: r.createdAt,
+            value: r.weight
+        })).filter(d => d.value),
+
+        // Dữ liệu chiều cao (thường ít thay đổi)
+        height: records.map(r => ({
+            date: r.createdAt,
+            value: r.height
+        })).filter(d => d.value),
+
+        // Dữ liệu BMI
+        bmi: records.map(r => ({
+            date: r.createdAt,
+            value: r.bmi
+        })).filter(d => d.value),
+
+        // Dữ liệu huyết áp
+        bloodPressure: records.map(r => ({
+            date: r.createdAt,
+            systolic: r.bloodPressure?.systolic,
+            diastolic: r.bloodPressure?.diastolic
+        })).filter(d => d.systolic && d.diastolic),
+
+        // Dữ liệu nhịp tim
+        heartRate: records.map(r => ({
+            date: r.createdAt,
+            value: r.heartRate
+        })).filter(d => d.value)
+    };
+
+    // Tính toán thống kê
+    const stats = {
+        totalRecords: records.length,
+        dateRange: {
+            start: startDate,
+            end: endDate
+        }
+    };
+
+    // Tính trung bình nếu có dữ liệu
+    if (chartData.weight.length > 0) {
+        const weights = chartData.weight.map(d => d.value);
+        stats.weight = {
+            min: Math.min(...weights),
+            max: Math.max(...weights),
+            avg: (weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(1),
+            latest: weights[weights.length - 1]
+        };
+    }
+
+    if (chartData.heartRate.length > 0) {
+        const rates = chartData.heartRate.map(d => d.value);
+        stats.heartRate = {
+            min: Math.min(...rates),
+            max: Math.max(...rates),
+            avg: Math.round(rates.reduce((a, b) => a + b, 0) / rates.length),
+            latest: rates[rates.length - 1]
+        };
+    }
+
+    return {
+        chartData,
+        stats
+    };
+};
+
+/**
+ * Lấy báo cáo lịch sử chatbot
+ * @param {string} userId - ID của user
+ * @param {object} query - Query parameters
+ * @returns {object} - Dữ liệu báo cáo
+ */
+const getChatbotReport = async (userId, query) => {
+    // Xác định khoảng thời gian
+    const endDate = query.endDate ? new Date(query.endDate) : new Date();
+    const startDate = query.startDate
+        ? new Date(query.startDate)
+        : new Date(endDate - 30 * 24 * 60 * 60 * 1000);
+
+    // Thống kê theo category
+    const categoryStats = await ChatHistory.aggregate([
+        {
+            $match: {
+                userId: userId,
+                createdAt: { $gte: startDate, $lte: endDate }
+            }
+        },
+        {
+            $group: {
+                _id: '$category',
+                count: { $sum: 1 }
+            }
+        },
+        {
+            $sort: { count: -1 }
+        }
+    ]);
+
+    // Thống kê theo ngày
+    const dailyStats = await ChatHistory.aggregate([
+        {
+            $match: {
+                userId: userId,
+                createdAt: { $gte: startDate, $lte: endDate }
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+                },
+                count: { $sum: 1 }
+            }
+        },
+        {
+            $sort: { _id: 1 }
+        }
+    ]);
+
+    // Tổng số câu hỏi
+    const totalQuestions = await ChatHistory.countDocuments({
+        userId,
+        createdAt: { $gte: startDate, $lte: endDate }
+    });
+
+    // Các từ khóa phổ biến
+    const keywordStats = await ChatHistory.aggregate([
+        {
+            $match: {
+                userId: userId,
+                createdAt: { $gte: startDate, $lte: endDate }
+            }
+        },
+        { $unwind: '$detectedKeywords' },
+        {
+            $group: {
+                _id: '$detectedKeywords',
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+    ]);
+
+    return {
+        summary: {
+            totalQuestions,
+            dateRange: {
+                start: startDate,
+                end: endDate
+            }
+        },
+        categoryStats: categoryStats.map(item => ({
+            category: item._id,
+            count: item.count
+        })),
+        dailyStats: dailyStats.map(item => ({
+            date: item._id,
+            count: item.count
+        })),
+        topKeywords: keywordStats.map(item => ({
+            keyword: item._id,
+            count: item.count
+        }))
+    };
+};
+
+/**
+ * Lấy báo cáo tổng quan
+ * @param {string} userId - ID của user
+ * @returns {object} - Dữ liệu tổng quan
+ */
+const getDashboardReport = async (userId) => {
+    // Lấy bản ghi sức khỏe mới nhất
+    const latestHealthRecord = await HealthRecord.findOne({ userId })
+        .sort({ createdAt: -1 });
+
+    // Đếm tổng số bản ghi
+    const totalHealthRecords = await HealthRecord.countDocuments({ userId });
+
+    // Đếm tổng số câu hỏi chatbot
+    const totalChatQuestions = await ChatHistory.countDocuments({ userId });
+
+    // Lấy 5 câu hỏi gần nhất
+    const recentChats = await ChatHistory.find({ userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('question category createdAt');
+
+    return {
+        healthSummary: {
+            latestRecord: latestHealthRecord,
+            totalRecords: totalHealthRecords
+        },
+        chatSummary: {
+            totalQuestions: totalChatQuestions,
+            recentChats
+        }
+    };
+};
+
+module.exports = {
+    getHealthReport,
+    getChatbotReport,
+    getDashboardReport
+};
