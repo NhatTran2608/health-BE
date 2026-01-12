@@ -10,6 +10,7 @@
 
 const HealthRecord = require('../models/HealthRecord');
 const ChatHistory = require('../models/ChatHistory');
+const Reminder = require('../models/Reminder');
 
 /**
  * Lấy báo cáo sức khỏe theo thời gian
@@ -239,8 +240,114 @@ const getDashboardReport = async (userId) => {
     };
 };
 
+/**
+ * Lấy thống kê tổng thể cho admin (tất cả users)
+ * @returns {object} - Thống kê tổng thể
+ */
+const getAdminStats = async () => {
+    const User = require('../models/User');
+    
+    // Đếm tổng số bản ghi sức khỏe của tất cả users
+    const totalHealthRecords = await HealthRecord.countDocuments();
+    
+    // Đếm tổng số câu hỏi chatbot của tất cả users
+    const totalChatQuestions = await ChatHistory.countDocuments();
+    
+    // Đếm tổng số nhắc nhở đang hoạt động
+    const totalActiveReminders = await Reminder.countDocuments({ isActive: true });
+    
+    // Tính ngày bắt đầu (30 ngày trước)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - 30);
+    
+    // Lấy dữ liệu tăng trưởng người dùng (30 ngày qua)
+    const userGrowth = await User.aggregate([
+        {
+            $match: {
+                createdAt: { $gte: startDate, $lte: endDate }
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+                },
+                count: { $sum: 1 }
+            }
+        },
+        {
+            $sort: { _id: 1 }
+        }
+    ]);
+    
+    // Lấy dữ liệu hoạt động theo ngày (health records + chats)
+    const dailyActivity = await HealthRecord.aggregate([
+        {
+            $match: {
+                createdAt: { $gte: startDate, $lte: endDate }
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+                },
+                healthRecords: { $sum: 1 }
+            }
+        },
+        {
+            $sort: { _id: 1 }
+        }
+    ]);
+    
+    const dailyChats = await ChatHistory.aggregate([
+        {
+            $match: {
+                createdAt: { $gte: startDate, $lte: endDate }
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+                },
+                chats: { $sum: 1 }
+            }
+        },
+        {
+            $sort: { _id: 1 }
+        }
+    ]);
+    
+    // Merge daily activity data
+    const activityMap = new Map();
+    dailyActivity.forEach(item => {
+        activityMap.set(item._id, { date: item._id, healthRecords: item.healthRecords, chats: 0 });
+    });
+    dailyChats.forEach(item => {
+        if (activityMap.has(item._id)) {
+            activityMap.get(item._id).chats = item.chats;
+        } else {
+            activityMap.set(item._id, { date: item._id, healthRecords: 0, chats: item.chats });
+        }
+    });
+    
+    return {
+        totalHealthRecords,
+        totalChatQuestions,
+        totalActiveReminders,
+        userGrowth: userGrowth.map(item => ({
+            date: item._id,
+            count: item.count
+        })),
+        dailyActivity: Array.from(activityMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+    };
+};
+
 module.exports = {
     getHealthReport,
     getChatbotReport,
-    getDashboardReport
+    getDashboardReport,
+    getAdminStats
 };

@@ -113,8 +113,23 @@ const getDashboardReport = async (req, res, next) => {
     }
 };
 
+/**
+ * @desc    Lấy thống kê tổng thể cho admin
+ * @route   GET /api/reports/admin/stats
+ * @access  Private/Admin
+ */
+const getAdminStats = async (req, res, next) => {
+    try {
+        const stats = await reportService.getAdminStats();
+        return successResponse(res, 200, 'Thành công', stats);
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getHealthReport,
     getChatbotReport,
-    getDashboardReport
+    getDashboardReport,
+    getAdminStats
 };

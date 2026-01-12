@@ -12,7 +12,7 @@ const router = express.Router();
 const { reportController } = require('../controllers');
 
 // Import middlewares
-const { protect } = require('../middlewares');
+const { protect, adminOnly } = require('../middlewares');
 
 /**
  * @route   GET /api/reports/health
@@ -34,5 +34,12 @@ router.get('/chatbot', protect, reportController.getChatbotReport);
  * @access  Private
  */
 router.get('/dashboard', protect, reportController.getDashboardReport);
+
+/**
+ * @route   GET /api/reports/admin/stats
+ * @desc    Lấy thống kê tổng thể cho admin
+ * @access  Private/Admin
+ */
+router.get('/admin/stats', protect, adminOnly, reportController.getAdminStats);
 
 module.exports = router;
