@@ -9,7 +9,7 @@
  */
 
 const ChatHistory = require('../models/ChatHistory');
-const { getResponse } = require('../utils/chatbotResponses');
+const { getGeminiResponse } = require('./geminiService');
 
 /**
  * Xử lý câu hỏi và trả về câu trả lời
@@ -18,8 +18,18 @@ const { getResponse } = require('../utils/chatbotResponses');
  * @returns {object} - Câu trả lời và thông tin liên quan
  */
 const ask = async (userId, question) => {
-    // Lấy câu trả lời từ chatbot
-    const { answer, category, detectedKeywords } = getResponse(question);
+    // Lấy lịch sử hội thoại gần đây để cung cấp context cho Gemini
+    const recentHistory = await ChatHistory.find({ userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('question answer')
+        .lean();
+
+    // Đảo ngược để có thứ tự từ cũ đến mới
+    const chatHistory = recentHistory.reverse();
+
+    // Lấy câu trả lời từ Gemini AI
+    const { answer, category, detectedKeywords } = await getGeminiResponse(question, chatHistory);
 
     // Lưu vào lịch sử
     const chatRecord = await ChatHistory.create({

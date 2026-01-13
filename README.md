@@ -95,6 +95,10 @@ MONGODB_URI=mongodb://localhost:27017/health_management
 JWT_SECRET=your_secret_key_here
 JWT_EXPIRE=7d
 NODE_ENV=development
+
+# Gemini AI API Key (bắt buộc cho tính năng tư vấn sức khỏe)
+# Lấy API key từ: https://ai.google.dev/ hoặc https://makersuite.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 ### 4. Chạy ứng dụng
@@ -411,5 +415,6 @@ Các HTTP Status Code phổ biến:
 
 ## 📝 License
 ISC
-#   h e a l t h - B E  
+#   h e a l t h - B E 
+ 
  
