@@ -23,23 +23,22 @@ if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 }
 
+// Model mặc định - sử dụng gemini-2.0-flash vì nhanh và miễn phí
+const DEFAULT_MODEL = "gemini-2.0-flash";
+
 /**
  * Tìm model khả dụng bằng cách thử từng model với prompt thực tế
  * @param {string} prompt - Prompt để test
  * @returns {Promise<string>} - Tên model khả dụng
  */
 const findAvailableModel = async (prompt) => {
-  // Danh sách model để thử (theo thứ tự ưu tiên)
-  // Thử các biến thể tên model khác nhau
+  // Danh sách model để thử (theo thứ tự ưu tiên - model mới nhất trước)
   const modelsToTry = [
-    "gemini-pro", // Tên cơ bản
-    "models/gemini-pro", // Với prefix models/
-    "gemini-1.5-flash", // Model mới
-    "models/gemini-1.5-flash", // Với prefix
-    "gemini-1.5-pro", // Model mới
-    "models/gemini-1.5-pro", // Với prefix
-    "gemini-1.0-pro", // Phiên bản cũ hơn
-    "models/gemini-1.0-pro", // Với prefix
+    "gemini-2.0-flash", // Model mới nhất, miễn phí
+    "gemini-1.5-flash", // Model nhanh
+    "gemini-1.5-pro", // Model mạnh hơn
+    "gemini-1.5-flash-latest", // Phiên bản mới nhất của flash
+    "gemini-pro", // Model cũ (có thể đã deprecated)
   ];
 
   for (const modelName of modelsToTry) {
@@ -71,12 +70,77 @@ const findAvailableModel = async (prompt) => {
 };
 
 /**
+ * Loại bỏ các ký tự markdown formatting từ text
+ * @param {string} text - Text cần xử lý
+ * @returns {string} - Text đã được làm sạch
+ */
+const cleanMarkdownFormatting = (text) => {
+  if (!text) return text;
+
+  return text
+    // Loại bỏ **bold**
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    // Loại bỏ *italic*
+    .replace(/\*(.*?)\*/g, '$1')
+    // Loại bỏ __bold__
+    .replace(/__(.*?)__/g, '$1')
+    // Loại bỏ _italic_
+    .replace(/_(.*?)_/g, '$1')
+    // Loại bỏ ~~strikethrough~~
+    .replace(/~~(.*?)~~/g, '$1')
+    // Loại bỏ `code`
+    .replace(/`(.*?)`/g, '$1')
+    // Loại bỏ ### headers
+    .replace(/^#{1,6}\s+/gm, '')
+    // Giữ lại bullet points nhưng chuẩn hóa
+    .replace(/^[\*\-]\s+/gm, '• ')
+    .trim();
+};
+
+/**
+ * Tạo context dữ liệu sức khỏe compact
+ */
+const buildHealthDataContext = (h) => {
+  if (!h) return '';
+  const parts = [];
+
+  // Thông tin cơ bản - format compact
+  if (h.age) parts.push(`${h.age}t`);
+  if (h.gender) parts.push(h.gender);
+  if (h.height) parts.push(`${h.height}cm`);
+  if (h.weight) parts.push(`${h.weight}kg`);
+  if (h.bmi) {
+    const v = parseFloat(h.bmi);
+    const s = v < 18.5 ? 'thiếu' : v < 25 ? 'OK' : v < 30 ? 'thừa' : 'béo phì';
+    parts.push(`BMI:${h.bmi}(${s})`);
+  }
+
+  // Chỉ số sức khỏe
+  if (h.bloodPressure?.systolic) parts.push(`HA:${h.bloodPressure.systolic}/${h.bloodPressure.diastolic}`);
+  if (h.heartRate) parts.push(`Tim:${h.heartRate}`);
+  if (h.bloodSugar) parts.push(`ĐH:${h.bloodSugar}`);
+  if (h.temperature) parts.push(`${h.temperature}°C`);
+
+  // Lối sống - chỉ thêm nếu có
+  if (h.lifestyle) {
+    const l = h.lifestyle;
+    if (l.smoking) parts.push('hút thuốc');
+    if (l.alcohol) parts.push('uống rượu');
+  }
+
+  if (h.medicalHistory) parts.push(`Bệnh:${h.medicalHistory.substring(0, 50)}`);
+
+  return parts.length ? `\n[User: ${parts.join(', ')}]` : '';
+};
+
+/**
  * Lấy câu trả lời từ Gemini AI
  * @param {string} question - Câu hỏi của người dùng
  * @param {Array} chatHistory - Lịch sử hội thoại (tùy chọn)
+ * @param {object} userHealthData - Dữ liệu sức khỏe của người dùng (tùy chọn)
  * @returns {Promise<object>} - Câu trả lời và thông tin liên quan
  */
-const getGeminiResponse = async (question, chatHistory = []) => {
+const getGeminiResponse = async (question, chatHistory = [], userHealthData = null) => {
   // Nếu không có API key, trả về lỗi
   if (!GEMINI_API_KEY || !genAI) {
     throw new Error(
@@ -84,33 +148,29 @@ const getGeminiResponse = async (question, chatHistory = []) => {
     );
   }
 
-  // Tạo prompt với context về tư vấn sức khỏe
-  const systemPrompt = `Bạn là một chatbot tư vấn sức khỏe chuyên nghiệp và thân thiện. 
-Nhiệm vụ của bạn là:
-- Trả lời các câu hỏi về sức khỏe một cách chính xác và hữu ích
-- Đưa ra lời khuyên về lối sống lành mạnh, dinh dưỡng, tập thể dục, giấc ngủ, stress
-- Luôn nhắc nhở người dùng tham khảo ý kiến bác sĩ nếu có vấn đề sức khỏe nghiêm trọng
-- Trả lời bằng tiếng Việt, ngắn gọn, dễ hiểu
-- Sử dụng định dạng danh sách hoặc số thứ tự khi phù hợp
-- Không đưa ra chẩn đoán y khoa chính xác, chỉ tư vấn chung
-
-Hãy trả lời câu hỏi sau:`;
+  // Prompt tối ưu - giảm token
+  const systemPrompt = `Tư vấn sức khỏe tiếng Việt. Dùng data user nếu có. Không markdown(**). Ngắn gọn. Khuyên gặp bác sĩ nếu nghiêm trọng.`;
 
   // Xây dựng lịch sử hội thoại nếu có
   let fullPrompt = systemPrompt;
 
+  // Thêm dữ liệu sức khỏe của người dùng vào context
+  if (userHealthData) {
+    fullPrompt += buildHealthDataContext(userHealthData);
+  }
+
+  // Chỉ lấy 3 tin nhắn gần nhất, format compact
   if (chatHistory.length > 0) {
-    fullPrompt += "\n\nLịch sử hội thoại trước đó:\n";
-    chatHistory.slice(-5).forEach((chat, index) => {
-      fullPrompt += `Người dùng: ${chat.question}\n`;
-      fullPrompt += `Bạn: ${chat.answer}\n\n`;
+    fullPrompt += "\nChat:";
+    chatHistory.slice(-3).forEach((c) => {
+      fullPrompt += `\nQ:${c.question.substring(0, 100)}\nA:${c.answer.substring(0, 150)}`;
     });
   }
 
-  fullPrompt += `\nCâu hỏi hiện tại: ${question}`;
+  fullPrompt += `\nQ:${question}`;
 
   // Thử gọi trực tiếp với model, nếu lỗi thì mới tìm model khác
-  let availableModelName = getGeminiResponse._cachedModel || "gemini-pro";
+  let availableModelName = getGeminiResponse._cachedModel || DEFAULT_MODEL;
   let model = genAI.getGenerativeModel({ model: availableModelName });
   let result, response, answer;
 
@@ -120,14 +180,17 @@ Hãy trả lời câu hỏi sau:`;
     response = await result.response;
     answer = response.text();
 
+    // Loại bỏ markdown formatting từ câu trả lời
+    const cleanedAnswer = cleanMarkdownFormatting(answer);
+
     // Phát hiện category dựa trên nội dung câu trả lời
-    const category = detectCategory(question, answer);
+    const category = detectCategory(question, cleanedAnswer);
 
     // Phát hiện keywords
     const detectedKeywords = detectKeywords(question);
 
     return {
-      answer: answer.trim(),
+      answer: cleanedAnswer,
       category,
       detectedKeywords,
     };
@@ -155,12 +218,13 @@ Hãy trả lời câu hỏi sau:`;
         response = await result.response;
         answer = response.text();
 
-        // Nếu thành công, xử lý và return
-        const category = detectCategory(question, answer);
+        // Loại bỏ markdown formatting và xử lý
+        const cleanedAnswer = cleanMarkdownFormatting(answer);
+        const category = detectCategory(question, cleanedAnswer);
         const detectedKeywords = detectKeywords(question);
 
         return {
-          answer: answer.trim(),
+          answer: cleanedAnswer,
           category,
           detectedKeywords,
         };

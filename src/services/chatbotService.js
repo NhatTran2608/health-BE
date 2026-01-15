@@ -9,6 +9,8 @@
  */
 
 const ChatHistory = require('../models/ChatHistory');
+const HealthRecord = require('../models/HealthRecord');
+const User = require('../models/User');
 const { getGeminiResponse } = require('./geminiService');
 
 /**
@@ -28,8 +30,40 @@ const ask = async (userId, question) => {
     // Đảo ngược để có thứ tự từ cũ đến mới
     const chatHistory = recentHistory.reverse();
 
+    // Lấy thông tin user và dữ liệu sức khỏe mới nhất
+    const user = await User.findById(userId).select('name age gender height weight medicalHistory lifestyle').lean();
+    const latestHealthRecord = await HealthRecord.findOne({ userId })
+        .sort({ createdAt: -1 })
+        .lean();
+
+    // Tính BMI nếu có dữ liệu
+    let bmi = null;
+    const height = latestHealthRecord?.height || user?.height;
+    const weight = latestHealthRecord?.weight || user?.weight;
+    if (height && weight) {
+        const heightInMeters = height / 100;
+        bmi = (weight / (heightInMeters * heightInMeters)).toFixed(1);
+    }
+
+    // Tạo object chứa dữ liệu sức khỏe của user
+    const userHealthData = {
+        name: user?.name,
+        age: user?.age,
+        gender: user?.gender === 'male' ? 'Nam' : user?.gender === 'female' ? 'Nữ' : 'Khác',
+        height: height,
+        weight: weight,
+        bmi: bmi,
+        medicalHistory: user?.medicalHistory,
+        lifestyle: user?.lifestyle,
+        bloodPressure: latestHealthRecord?.bloodPressure,
+        heartRate: latestHealthRecord?.heartRate,
+        bloodSugar: latestHealthRecord?.bloodSugar,
+        temperature: latestHealthRecord?.temperature,
+        lastRecordDate: latestHealthRecord?.createdAt
+    };
+
     // Lấy câu trả lời từ Gemini AI
-    const { answer, category, detectedKeywords } = await getGeminiResponse(question, chatHistory);
+    const { answer, category, detectedKeywords } = await getGeminiResponse(question, chatHistory, userHealthData);
 
     // Lưu vào lịch sử
     const chatRecord = await ChatHistory.create({
