@@ -16,6 +16,12 @@ const chatbotRoutes = require('./chatbotRoutes');
 const reminderRoutes = require('./reminderRoutes');
 const reportRoutes = require('./reportRoutes');
 const searchRoutes = require('./searchRoutes');
+const healthGoalRoutes = require('./healthGoalRoutes');
+const waterIntakeRoutes = require('./waterIntakeRoutes');
+const exerciseLogRoutes = require('./exerciseLogRoutes');
+const sleepTrackerRoutes = require('./sleepTrackerRoutes');
+const doctorRoutes = require('./doctorRoutes');
+const appointmentRoutes = require('./appointmentRoutes');
 
 // Đăng ký các routes với prefix
 router.use('/auth', authRoutes);           // /api/auth/*
@@ -25,6 +31,12 @@ router.use('/chatbot', chatbotRoutes);     // /api/chatbot/*
 router.use('/reminders', reminderRoutes);  // /api/reminders/*
 router.use('/reports', reportRoutes);      // /api/reports/*
 router.use('/search', searchRoutes);       // /api/search/*
+router.use('/health-goals', healthGoalRoutes); // /api/health-goals/*
+router.use('/water-intake', waterIntakeRoutes); // /api/water-intake/*
+router.use('/exercise-log', exerciseLogRoutes); // /api/exercise-log/*
+router.use('/sleep-tracker', sleepTrackerRoutes); // /api/sleep-tracker/*
+router.use('/doctors', doctorRoutes); // /api/doctors/*
+router.use('/appointments', appointmentRoutes); // /api/appointments/*
 
 // Route test API
 router.get('/', (req, res) => {
@@ -39,7 +51,13 @@ router.get('/', (req, res) => {
             chatbot: '/api/chatbot',
             reminders: '/api/reminders',
             reports: '/api/reports',
-            search: '/api/search'
+            search: '/api/search',
+            healthGoals: '/api/health-goals',
+            waterIntake: '/api/water-intake',
+            exerciseLog: '/api/exercise-log',
+            sleepTracker: '/api/sleep-tracker',
+            doctors: '/api/doctors',
+            appointments: '/api/appointments'
         }
     });
 });

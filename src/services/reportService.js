@@ -11,6 +11,10 @@
 const HealthRecord = require('../models/HealthRecord');
 const ChatHistory = require('../models/ChatHistory');
 const Reminder = require('../models/Reminder');
+const HealthGoal = require('../models/HealthGoal');
+const WaterIntake = require('../models/WaterIntake');
+const ExerciseLog = require('../models/ExerciseLog');
+const SleepTracker = require('../models/SleepTracker');
 
 /**
  * Lấy báo cáo sức khỏe theo thời gian
@@ -256,6 +260,58 @@ const getAdminStats = async () => {
     // Đếm tổng số nhắc nhở đang hoạt động
     const totalActiveReminders = await Reminder.countDocuments({ isActive: true });
     
+    // Thống kê Health Goals
+    const totalHealthGoals = await HealthGoal.countDocuments();
+    const activeHealthGoals = await HealthGoal.countDocuments({ status: 'active' });
+    const completedHealthGoals = await HealthGoal.countDocuments({ status: 'completed' });
+    
+    // Thống kê Water Intake
+    const totalWaterIntakes = await WaterIntake.countDocuments();
+    const waterIntakeStats = await WaterIntake.aggregate([
+        {
+            $group: {
+                _id: null,
+                totalAmount: { $sum: '$amount' },
+                averageAmount: { $avg: '$amount' }
+            }
+        }
+    ]);
+    const totalWaterAmount = waterIntakeStats.length > 0 ? waterIntakeStats[0].totalAmount : 0;
+    
+    // Thống kê Exercise Log
+    const totalExercises = await ExerciseLog.countDocuments();
+    const exerciseStats = await ExerciseLog.aggregate([
+        {
+            $group: {
+                _id: null,
+                totalDuration: { $sum: '$duration' },
+                totalCalories: { $sum: { $ifNull: ['$caloriesBurned', 0] } },
+                totalDistance: { $sum: { $ifNull: ['$distance', 0] } }
+            }
+        }
+    ]);
+    const exerciseSummary = exerciseStats.length > 0 ? {
+        totalDuration: exerciseStats[0].totalDuration || 0,
+        totalCalories: exerciseStats[0].totalCalories || 0,
+        totalDistance: exerciseStats[0].totalDistance || 0
+    } : { totalDuration: 0, totalCalories: 0, totalDistance: 0 };
+    
+    // Thống kê Sleep Tracker
+    const totalSleeps = await SleepTracker.countDocuments();
+    const sleepStats = await SleepTracker.aggregate([
+        {
+            $group: {
+                _id: null,
+                totalSleepMinutes: { $sum: { $ifNull: ['$totalSleepMinutes', 0] } },
+                averageSleepMinutes: { $avg: { $ifNull: ['$totalSleepMinutes', 0] } },
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+    const averageSleepHours = sleepStats.length > 0 && sleepStats[0].count > 0
+        ? (sleepStats[0].averageSleepMinutes / 60).toFixed(1)
+        : 0;
+    
     // Tính ngày bắt đầu (30 ngày trước)
     const endDate = new Date();
     const startDate = new Date();
@@ -337,6 +393,30 @@ const getAdminStats = async () => {
         totalHealthRecords,
         totalChatQuestions,
         totalActiveReminders,
+        // Thống kê Health Goals
+        healthGoals: {
+            total: totalHealthGoals,
+            active: activeHealthGoals,
+            completed: completedHealthGoals
+        },
+        // Thống kê Water Intake
+        waterIntake: {
+            totalRecords: totalWaterIntakes,
+            totalAmount: totalWaterAmount, // ml
+            totalLiters: (totalWaterAmount / 1000).toFixed(2) // L
+        },
+        // Thống kê Exercise Log
+        exerciseLog: {
+            totalRecords: totalExercises,
+            totalDuration: exerciseSummary.totalDuration, // phút
+            totalCalories: exerciseSummary.totalCalories,
+            totalDistance: exerciseSummary.totalDistance // km
+        },
+        // Thống kê Sleep Tracker
+        sleepTracker: {
+            totalRecords: totalSleeps,
+            averageSleepHours: parseFloat(averageSleepHours)
+        },
         userGrowth: userGrowth.map(item => ({
             date: item._id,
             count: item.count

@@ -12,6 +12,12 @@ const chatbotController = require('./chatbotController');
 const reminderController = require('./reminderController');
 const reportController = require('./reportController');
 const searchController = require('./searchController');
+const healthGoalController = require('./healthGoalController');
+const waterIntakeController = require('./waterIntakeController');
+const exerciseLogController = require('./exerciseLogController');
+const sleepTrackerController = require('./sleepTrackerController');
+const doctorController = require('./doctorController');
+const appointmentController = require('./appointmentController');
 
 module.exports = {
     authController,
@@ -20,5 +26,11 @@ module.exports = {
     chatbotController,
     reminderController,
     reportController,
-    searchController
+    searchController,
+    healthGoalController,
+    waterIntakeController,
+    exerciseLogController,
+    sleepTrackerController,
+    doctorController,
+    appointmentController
 };

@@ -16,7 +16,7 @@ if (!GEMINI_API_KEY) {
     "⚠️  Cảnh báo: GEMINI_API_KEY chưa được cấu hình trong file .env"
   );
 }
-
+// LLM (Large Language Model): Mô hình ngôn ngữ lớn.
 // Khởi tạo Gemini AI
 let genAI = null;
 if (GEMINI_API_KEY) {
@@ -77,31 +77,33 @@ const findAvailableModel = async (prompt) => {
 const cleanMarkdownFormatting = (text) => {
   if (!text) return text;
 
-  return text
-    // Loại bỏ **bold**
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    // Loại bỏ *italic*
-    .replace(/\*(.*?)\*/g, '$1')
-    // Loại bỏ __bold__
-    .replace(/__(.*?)__/g, '$1')
-    // Loại bỏ _italic_
-    .replace(/_(.*?)_/g, '$1')
-    // Loại bỏ ~~strikethrough~~
-    .replace(/~~(.*?)~~/g, '$1')
-    // Loại bỏ `code`
-    .replace(/`(.*?)`/g, '$1')
-    // Loại bỏ ### headers
-    .replace(/^#{1,6}\s+/gm, '')
-    // Giữ lại bullet points nhưng chuẩn hóa
-    .replace(/^[\*\-]\s+/gm, '• ')
-    .trim();
+  return (
+    text
+      // Loại bỏ **bold**
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      // Loại bỏ *italic*
+      .replace(/\*(.*?)\*/g, "$1")
+      // Loại bỏ __bold__
+      .replace(/__(.*?)__/g, "$1")
+      // Loại bỏ _italic_
+      .replace(/_(.*?)_/g, "$1")
+      // Loại bỏ ~~strikethrough~~
+      .replace(/~~(.*?)~~/g, "$1")
+      // Loại bỏ `code`
+      .replace(/`(.*?)`/g, "$1")
+      // Loại bỏ ### headers
+      .replace(/^#{1,6}\s+/gm, "")
+      // Giữ lại bullet points nhưng chuẩn hóa
+      .replace(/^[\*\-]\s+/gm, "• ")
+      .trim()
+  );
 };
 
 /**
  * Tạo context dữ liệu sức khỏe compact
  */
 const buildHealthDataContext = (h) => {
-  if (!h) return '';
+  if (!h) return "";
   const parts = [];
 
   // Thông tin cơ bản - format compact
@@ -111,12 +113,13 @@ const buildHealthDataContext = (h) => {
   if (h.weight) parts.push(`${h.weight}kg`);
   if (h.bmi) {
     const v = parseFloat(h.bmi);
-    const s = v < 18.5 ? 'thiếu' : v < 25 ? 'OK' : v < 30 ? 'thừa' : 'béo phì';
+    const s = v < 18.5 ? "thiếu" : v < 25 ? "OK" : v < 30 ? "thừa" : "béo phì";
     parts.push(`BMI:${h.bmi}(${s})`);
   }
 
   // Chỉ số sức khỏe
-  if (h.bloodPressure?.systolic) parts.push(`HA:${h.bloodPressure.systolic}/${h.bloodPressure.diastolic}`);
+  if (h.bloodPressure?.systolic)
+    parts.push(`HA:${h.bloodPressure.systolic}/${h.bloodPressure.diastolic}`);
   if (h.heartRate) parts.push(`Tim:${h.heartRate}`);
   if (h.bloodSugar) parts.push(`ĐH:${h.bloodSugar}`);
   if (h.temperature) parts.push(`${h.temperature}°C`);
@@ -124,13 +127,13 @@ const buildHealthDataContext = (h) => {
   // Lối sống - chỉ thêm nếu có
   if (h.lifestyle) {
     const l = h.lifestyle;
-    if (l.smoking) parts.push('hút thuốc');
-    if (l.alcohol) parts.push('uống rượu');
+    if (l.smoking) parts.push("hút thuốc");
+    if (l.alcohol) parts.push("uống rượu");
   }
 
   if (h.medicalHistory) parts.push(`Bệnh:${h.medicalHistory.substring(0, 50)}`);
 
-  return parts.length ? `\n[User: ${parts.join(', ')}]` : '';
+  return parts.length ? `\n[User: ${parts.join(", ")}]` : "";
 };
 
 /**
@@ -140,7 +143,11 @@ const buildHealthDataContext = (h) => {
  * @param {object} userHealthData - Dữ liệu sức khỏe của người dùng (tùy chọn)
  * @returns {Promise<object>} - Câu trả lời và thông tin liên quan
  */
-const getGeminiResponse = async (question, chatHistory = [], userHealthData = null) => {
+const getGeminiResponse = async (
+  question,
+  chatHistory = [],
+  userHealthData = null
+) => {
   // Nếu không có API key, trả về lỗi
   if (!GEMINI_API_KEY || !genAI) {
     throw new Error(
@@ -163,7 +170,10 @@ const getGeminiResponse = async (question, chatHistory = [], userHealthData = nu
   if (chatHistory.length > 0) {
     fullPrompt += "\nChat:";
     chatHistory.slice(-3).forEach((c) => {
-      fullPrompt += `\nQ:${c.question.substring(0, 100)}\nA:${c.answer.substring(0, 150)}`;
+      fullPrompt += `\nQ:${c.question.substring(
+        0,
+        100
+      )}\nA:${c.answer.substring(0, 150)}`;
     });
   }
 
